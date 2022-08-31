@@ -63,7 +63,7 @@ local meta_mt = {}
 local meta = {}
 local meta_MAP = {}
 
-meta.__add = {
+meta.__add = { -- + 
   {"vector", "vector",   function(v1, v2) return vector.plus(v1, v2)        end},
   {"vector", "number",   function(v, n)   return vector.plus_scalar(v, n)   end},
   {"number", "vector",   function(n, v)   return vector.plus_scalar(v, n)   end},
@@ -77,7 +77,7 @@ meta.__add = {
   {"number", "matrix",   function(n, m)   return matrix.plus_scalar(m, n)   end},
 }
 
-meta.__sub = {
+meta.__sub = { -- - 
   {"vector", "vector",   function(v1, v2) return vector.minus(v1, v2)          end},
   {"vector", "number",   function(v, n)   return vector.minus_scalar(v, n)     end},
   {"number", "vector",   function(n, v)   return vector.minus_scalar(-v, -n)   end},
@@ -91,7 +91,7 @@ meta.__sub = {
   {"number", "matrix",   function(n, m)   return matrix.minus_scalar(-m, -n)   end},
 }
 
-meta.__mul = {
+meta.__mul = { -- *
   {"vector", "vector",   function(v1, v2) return vector.times(v1, v2)      end},
   {"vector", "number",   function(v, n)   return vector.scale(v, n)        end},
   {"number", "vector",   function(n, v)   return vector.scale(v, n)        end},
@@ -105,7 +105,7 @@ meta.__mul = {
   {"number", "matrix",   function(n, m)   return matrix.scale(m, n)        end},
 }
 
-meta.__div = {
+meta.__div = { -- /
   {"vector", "vector",   function(v1, v2) return vector.divide(v1, v2)      end},
   {"vector", "number",   function(v, n)   return vector.divide_scalar(v, n)   end},
   {"number", "vector",   function(v, n)   return vector.divideM_scalar(v, n)  end},
@@ -122,7 +122,7 @@ meta.__div = {
   {"vector", "matrix",   function(v, m)   return matrix.divide(v.matrix, m)  end},
 }
 
-meta.__pow = {
+meta.__pow = { -- ^
   {"vector", "vector",   function(v1, v2) return vector.power(v1, v2)       end},
   {"vector", "number",   function(v, n)   return vector.power_scalar(v, n)  end},
   {"matrix", "matrix",   function(m1, m2) return matrix.power(m1, m2)       end},
@@ -131,24 +131,24 @@ meta.__pow = {
   {"complex", "complex", function(c1, c2) return complex.power(c1, c2)      end},
 }
 
-meta.__concat = {
+meta.__concat = { -- ..
   {"vector", "vector",   function(v1, v2) return vector.concat(v1, v2)     end},
 }
 
-meta.__bnot = {
+meta.__bnot = { -- ~
   {"matrix", "matrix", function(m) return matrix.transpose(m) end},
   {"vector", "vector", function(v) return vector.transpose(v) end},
   {"complex", "complex", function (c) return complex.conjugate(c) end}
 }
 
-meta.__band = {
+meta.__band = { -- &
   {"vector", "vector",   function(v1, v2) return matrix.mult(v1.matrix, v2.matrix)  end},
   {"matrix", "matrix",   function(m1, m2)   return matrix.mult(m1, m2)              end},
   {"matrix", "vector",   function(m, v)   return matrix.mult(m, v.matrix)           end},
   {"vector", "matrix",   function(v, m)   return matrix.mult(v.matrix, m)           end},
 }
 
-meta.__bor = {
+meta.__bor = { -- |
 }
 
 

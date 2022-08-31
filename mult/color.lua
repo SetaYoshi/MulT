@@ -1,5 +1,7 @@
 local color = {}
 
+local classConstruct = require("classConstruct")
+
 local floor, abs = math.floor, math.abs
 local max, min = math.max, math.min
 
@@ -26,86 +28,12 @@ local lerp = math.lerp
 _G.color = color
 
 
--- --------- Properties ---------
+-- ---- Auto-Generate Class -----
 
-local props = {}
-color.props = props
+classConstruct.new("color", color)
 
--- Register a class property
--- registerprop{
---   name = Name of the property
---   type = How this property should behave: 'read-only', 'read-write', 'method'
---   getter = Function that returns the value (optional) 
---   setter = Function that defines how to set that value (optional)
--- }
-function color.registerprop(t)
-  props[t.name] = t
-end
-
--- Register an alias to a property
--- registerpropAlias('PropName', 'MyAlias1', 'MyAlias2', ...)
-function color.registerpropAlias(name, ...)
-  local isMethod = (props[name].type == 'method')
-
-  for _, v in ipairs({...}) do
-    props[v] = props[name]
-
-    -- Add the method function to the class, just to be consistent
-    if isMethod then
-      color[v] = props[name].getter or color[name] 
-    end
-  end
-end
-
-
--- ------- Class Metatable ------
-color.mt = {}  
+local color_props = color.props
 local color_mt = color.mt
-
-
--- Define a class name for type(...) compatibility
-color_mt.__name = "color"
-
--- Define what data you can access out of the class
-color_mt.__index = function(t, k)
-  if not props[k] then return end  -- Only allows access to props values
-  local proptype = props[k].type
-  
-  -- If the prop is a method, then return the function
-  if proptype == 'method' then  
-    return props[k].getter or color[props[k].name]  -- If the getter doesnt exist, assume its part of the class (is thiz needed? Can be just: color[props[k].name])
-
-  -- Otherwise, return the intended value
-  else                      
-    -- If prop value does not exists, calculate it and save it    
-    if not t._props[k] then 
-      local f = props[k].getter or color[props[k].name]  -- If the getter doesnt exist, assume its part of the class
-      local x = f(t)
-
-      -- Save the result to avoid recalculating everytime 
-      t._props[k] = x
-    end
-
-    return t._props[k]
-  end
-end
-
--- Define what data you can write into the class
-color_mt.__newindex = function(t, k, v)
-  -- If it is a prop then do what is specified
-  if props[k] then
-    props[k].setter(t, v)
-
-  -- Otherwise allow the user to store its own user data
-  else
-    rawset(t, k, v)
-  end
-end
-
--- Define what string to use for print(...) (etc)
-color_mt.__tostring = function(t)
-  return t.string
-end
 
 
 -- ------- Class Metatable ------
@@ -117,7 +45,6 @@ setmetatable(color, color_class_mt)
 color_class_mt.__call = function(t, ...)
   return color.rgba(...)
 end
-
 
 -- ==============================
 -- ========== The Math ==========
@@ -146,7 +73,7 @@ local function convHsvToRgb(h, s, v)
   return (r + m)*255, (g + m)*255, (b + m)*255
 end
 
--- Converts a red, green, blue (0 - 1) to a hue (0 - 360°), saturation (0 - 1), value (0 - 1) 
+-- Converts a red, green, blue (0 - 1) to a hue (0 - 360°), saturation (0 - 1), value (0 - 1)
 -- red, green, blue = convHsvToRgb(hue, saturation, value)
 local function convRgbToHsv(r, g, b)
   local h, s, v
@@ -176,13 +103,14 @@ local function convRgbToHsv(r, g, b)
   return h*60, s, v
 end
 
+local v256_map = {256^0, 256^1, 256^2, 256^3, 256^4}
+
 -- Converts a red, green, blue, alpha (0 - 1) to a hex value
 -- hex = convRgbaToHex(red, green, blue)
 local function convRgbaToHex(r, g, b, a)
   return r*v256_map[4] + g*v256_map[3] + b*v256_map[2] + a*v256_map[1]
 end
 
-local v256_map = {256^0, 256^1, 256^2, 256^3, 256^4}
 local function getHexValue(hex, type)
   -- return floor(hex/256^(4 - type)) - 256*floor(hex/256^(4 - type + 1))
   return floor(hex/v256_map[5 - type]) - 256*floor(hex/v256_map[6 - type])
@@ -228,6 +156,11 @@ function color.rgba(...)
   c.values = v
   c._props = {}
 
+  c._props.r = v[1]
+  c._props.g = v[2]
+  c._props.b = v[3]
+  c._props.a = v[4]
+
   setmetatable(c, color_mt)
   return c
 end
@@ -245,8 +178,14 @@ end
 -- Creates a color object from a hue (0 - 360°), saturation (0 - 1), value (0 - 1), alpha (0 - 1)
 -- color = color.hsva(hue, saturation, value, alpha)
 function color.hsva(h, s, v, a)
-  local r, g, b = convHsvToRgb(h, s, v)
-  return color.rgb(r, g, b, a)
+  local r, g, b = convHsvToRgb(h % 360, clamp(0, 1, s), clamp(0, 1, v))
+  local c = color.rgb(r, g, b, a)
+
+  c._props.h = h
+  c._props.s = s
+  c._props.v = v
+
+  return c
 end
 
 -- Creates a color object from red, green, blue (0 - 1) values. Assumes an alpha of 1
@@ -265,7 +204,11 @@ color.hsv = color.hsva
 -- color = color.hex(hex)
 function color.hex(hex)
   local r, g, b, a = convHexToRgba(hex)
-  return color.rgba(r, g, b, a)
+  local c = color.rgba(r, g, b, a)
+
+  c._props.hex = hex
+
+  return c
 end
 
 
@@ -277,53 +220,56 @@ end
 ---------- Methods ---------
 ----------------------------
 
-function color.string(c)
-  local val = c.values
 
-  local hexString = string.format("#%02X%02X%02X%02X", floor(255*val[1]), floor(255*val[2]), floor(255*val[3]), floor(255*val[4]))
-  local rgbaString = "["..c.r.." "..c.g.." "..c.b.." "..c.a.."]"
-  local hsvString = "["..c.h.." "..c.s.." "..c.v.." "..c.a.."]"
-  local fixedString = "["..floor(255*val[1]).." "..floor(255*val[2]).." "..floor(255*val[3]).." "..floor(255*val[4]).."]"
+-- -------- Color Shifts --------
 
-  return hexString.."\n"..rgbaString.."\n"..hsvString.."\n"..fixedString
-end
--- -------- Constructors --------
+-- Returns a new color with a shifted red value. The value is clamped between (0 - 1)
+-- color = color.shiftR(color, red_shift)
 function color.shiftR(c, v)
   return color.rgba(c.r + v, c.g, c.b, c.a)
 end
 
+-- Returns a new color with a shifted green value. The value is clamped between (0 - 1)
+-- color = color.shiftG(color, green_shift)
 function color.shiftG(c, v)
   return color.rgba(c.r, c.g + v, c.b, c.a)
 end
 
+-- Returns a new color with a shifted blue value. The value is clamped between (0 - 1)
+-- color = color.shiftB(color, green_shift)
 function color.shiftB(c, v)
   return color.rgba(c.r, c.g, c.b, c.a)
 end
 
+-- Returns a new color with a shifted alpha value. The value is clamped between (0 - 1)
+-- color = color.shiftA(color, alpha_shift)
 function color.shiftA(c, v)
   return color.rgba(c.r, c.g, c.b + v, c.a)
 end
 
+-- Returns a new color with a shifted hue value. The value is wrapped between (0 - 360)
+-- color = color.shiftH(color, alpha_shift)
 function color.shiftH(c, v)
-  return color.hsva(c.h + v, c.s, c.v, c.a + v)
+  return color.hsva(c.h + v, c.s, c.v, c.a)
 end
 
+-- Returns a new color with a shifted saturation value. The value is clamped between (0 - 1)
+-- color = color.shiftS(color, saturation_shift)
 function color.shiftS(c, v)
-  return color.hsva(c.h, c.s + s, c.v, c.a)
+  return color.hsva(c.h, c.s + v, c.v, c.a)
 end
 
+-- Returns a new color with a shifted value value. The value is clamped between (0 - 1)
+-- color = color.shiftV(color, value_shift)
 function color.shiftV(c, v)
   return color.hsva(c.h, c.s, c.v + v, c.a)
 end
 
 
-function color.lerp(c1, c2, n)
-  return color.rgba(lerp(c1.r, c2.r, n), lerp(c1.g, c2.g, n), lerp(c1.b, c2.b, n), lerp(c1.a, c2.a, n))
-end
+-- -------- Blend Modes ---------
 
 local function bl_alpha(x1, x2) return x2 + x1*(1 - x2) end
-
-local function bl_over(x1, x2) return x2 end 
+local function bl_over(x1, x2) return x2 end
 local function bl_mult(x1, x2)  return x1*x2 end
 local function bl_additive(x1, x2) return x1 + x2 end
 local function bl_colorburn(x1, x2) return 1 - (1 - x2)/x1 end
@@ -357,52 +303,91 @@ local function color_mix(b, c1, c2)
   return color.rgba(rn, gn, bn, an)
 end
 
+-- Returns two colors blended (normal/overlap)
+-- color = color.over(color_backdrop, color_source)
 function color.over(c1, c2)
   return color_mix(bl_over, c1, c2)
 end
+
+-- Returns two colors blended (multiply)
+-- color = color.over(color_backdrop, color_source)
 function color.multiply(c1, c2)
   return color_mix(bl_mult, c1, c2)
 end
+
+-- Returns two colors blended (additive)
+-- color = color.over(color_backdrop, color_source)
 function color.additive(c1, c2)
   return color_mix(bl_additive, c1, c2)
 end
+
+-- Returns two colors blended (color burn)
+-- color = color.over(color_backdrop, color_source)
 function color.colorBurn(c1, c2)
   return color_mix(bl_colorburn, c1, c2)
 end
+
+-- Returns two colors blended (color dodge)
+-- color = color.over(color_backdrop, color_source)
 function color.colorDodge(c1, c2)
   return color_mix(bl_colordodge, c1, c2)
 end
+
+-- Returns two colors blended (reflect)
+-- color = color.over(color_backdrop, color_source)
 function color.reflect(c1, c2)
   return color_mix(bl_reflect, c1, c2)
 end
+
+-- Returns two colors blended (glow)
+-- color = color.over(color_backdrop, color_source)
 function color.glow(c1, c2)
   return color_mix(bl_glow, c1, c2)
 end
+
+-- Returns two colors blended (overlay)
+-- color = color.over(color_backdrop, color_source)
 function color.overlay(c1, c2)
   return color_mix(bl_overlay, c1, c2)
 end
-function color.diff(c1, c2)
+
+-- Returns two colors blended (difference)
+-- color = color.over(color_backdrop, color_source)
+function color.difference(c1, c2)
   return color_mix(bl_diff, c1, c2)
 end
+
+-- Returns two colors blended (negation)
+-- color = color.over(color_backdrop, color_source)
 function color.negation(c1, c2)
   return color_mix(bl_negation, c1, c2)
 end
+
+-- Returns two colors blended (lighten)
+-- color = color.over(color_backdrop, color_source)
 function color.lighten(c1, c2)
   return color_mix(bl_lighten, c1, c2)
 end
+
+-- Returns two colors blended (darken)
+-- color = color.over(color_backdrop, color_source)
 function color.darken(c1, c2)
   return color_mix(bl_darken, c1, c2)
 end
+
+-- Returns two colors blended (screen)
+-- color = color.over(color_backdrop, color_source)
 function color.screen(c1, c2)
   return color_mix(bl_screen, c1, c2)
 end
+
+-- Returns two colors blended (xor)
+-- color = color.over(color_backdrop, color_source)
 function color.xor(c1, c2)
   return color_mix(bl_xor, c1, c2)
 end
 
-----------------------------
--------- Properties --------
-----------------------------
+-- ------- Getter/Setters -------
 
 local function reset(t)
   t._props = {}
@@ -596,10 +581,53 @@ local function setter_hex(c, v)
 end
 
 
+-- ------------ Misc ------------
+
+-- Returns a string representation of the color
+-- color = color.string(color)
+function color.string(c)
+  local val = c.values
+
+  local hexString = string.format("#%02X%02X%02X%02X", floor(255*val[1]), floor(255*val[2]), floor(255*val[3]), floor(255*val[4]))
+  -- local rgbaString = "["..c.r.." "..c.g.." "..c.b.." "..c.a.."]"
+  -- local hsvString = "["..c.h.." "..c.s.." "..c.v.." "..c.a.."]"
+  -- local fixedString = "["..floor(255*val[1]).." "..floor(255*val[2]).." "..floor(255*val[3]).." "..floor(255*val[4]).."]"
+
+  return hexString --.."\n"..rgbaString.."\n"..hsvString.."\n"..fixedString
+end
+
+-- Returns an interpolated (0 - 1) color between two colors
+-- color = color.lerp(color1, color2, interp_value)
+function color.lerp(c1, c2, n)
+  return color.rgba(lerp(c1.r, c2.r, n), lerp(c1.g, c2.g, n), lerp(c1.b, c2.b, n), lerp(c1.a, c2.a, n))
+end
+
+-- Creates a new color identical to the one passed
+-- color = color.clone(color)
+function color.clone(c)
+  return color.rgba(c.r, c.g, c.b, c.a)
+end
+
+
+
 -- ==============================
 -- ======== Props Setup =========
 -- ==============================
 
+-- ----------- _Index -----------
+
+-- When accessing the index of a color, make it behave as if accessing r, g, b, a
+local indexproplist = {'r', 'g', 'b', 'a', 'h', 's', 'v'}
+
+function color_props._index.getter(t, k)
+  return t[indexproplist[k]]
+end
+
+function color_props._index.setter(t, k, v)
+  t[indexproplist[k]] = v
+end
+
+-- ---------- Register ----------
 
 color.registerprop{name = 'r',      type = 'read-write', getter = getter_r,    setter = setter_r}
 color.registerprop{name = 'g',      type = 'read-write', getter = getter_g,    setter = setter_g}
@@ -625,6 +653,7 @@ color.registerprop{name = "shiftS", type = 'method'}
 color.registerprop{name = "shiftV", type = 'method'}
 
 color.registerprop{name = "lerp",       type = 'method'}
+color.registerprop{name = "clone",      type = 'method'}
 color.registerprop{name = "over",       type = 'method'}
 color.registerprop{name = "multiply",   type = 'method'}
 color.registerprop{name = "additive",   type = 'method'}
@@ -633,13 +662,15 @@ color.registerprop{name = "colorDodge", type = 'method'}
 color.registerprop{name = "reflect",    type = 'method'}
 color.registerprop{name = "glow",       type = 'method'}
 color.registerprop{name = "overlay",    type = 'method'}
-color.registerprop{name = "diff",       type = 'method'}
+color.registerprop{name = "difference", type = 'method'}
 color.registerprop{name = "negation",   type = 'method'}
 color.registerprop{name = "lighten",    type = 'method'}
 color.registerprop{name = "darken",     type = 'method'}
 color.registerprop{name = "screen",     type = 'method'}
 color.registerprop{name = "xor",        type = 'method'}
 
+
+-- ---------- Aliases -----------
 
 color.registerpropAlias("r", "red")
 color.registerpropAlias("g", "green")
@@ -658,16 +689,21 @@ color.registerpropAlias("shiftH", "shiftHue")
 color.registerpropAlias("shiftS", "shiftSaturation", "shiftSat")
 color.registerpropAlias("shiftV", "shiftValue", "shiftVal")
 
--- Default colors
 
--- Grayscale
+-- ==============================
+-- ======= Default Colors =======
+-- ==============================
+
+-- --------- Grayscale ----------
+
 color.white  = color(0xFFFFFFFF)
 color.silver = color(0xC0C0C0FF)
 color.gray   = color(0x808080FF)
 color.iron   = color(0xa9a9a9FF)
 color.black  = color(0x000000FF)
 
--- Basic Colors
+-- -------- Basic Colors --------
+
 color.red    = color(0xFF0000FF)
 color.orange = color(0xFFA500FF)
 color.yellow = color(0xFFFF00FF)
@@ -675,7 +711,8 @@ color.green  = color(0x00FF00FF)
 color.blue   = color(0x0000FFFF)
 color.purple = color(0x800080FF)
 
--- Fancy colors
+-- -------- Fancy Colors --------
+
 color.maroon = color(0x800000FF)
 color.olive  = color(0x808000FF)
 color.lime   = color(0x00FF00FF)
