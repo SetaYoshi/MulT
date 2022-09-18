@@ -1,6 +1,6 @@
 local color = {}
 
-local classConstruct = require("classConstruct")
+local classConstruct = require("mult/classConstruct")
 
 local floor, abs = math.floor, math.abs
 local max, min = math.max, math.min
@@ -210,10 +210,6 @@ function color.hex(hex)
 
   return c
 end
-
-
-
-
 
 
 ----------------------------

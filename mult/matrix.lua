@@ -1,457 +1,270 @@
 local matrix = {}
 
+local classConstruct = require("mult/classConstruct")
+
 local min, max = math.min, math.max
-local sin, sqrt = math.sin, math.sqrt
-local random = math.random
+local sqrt, atan, ln, exp, abs = math.sqrt, math.atan, math.log, math.exp, math.abs
+local sin, cos = math.sin, math.cos
+local sinh, cosh = math.sinh, math.cosh
 
--- Easy Access Matrix Properties
-local props = {}
-matrix.props = props
 
--- List of Matrix operations
-local opers = {}
-matrix.opers = opers
+-- ==============================
+-- ======== Class Setup =========
+-- ==============================
 
--- Metatables
-matrix.mt = {}
 
-local matrix_class_mt = {}
+-- ----- Export Matrix Class -----
+
+_G.matrix = matrix
+_G.vector = matrix
+
+-- ---- Auto-Generate Class -----
+
+classConstruct.new("matrix", matrix)
+
+local matrix_props = matrix.props
 local matrix_mt = matrix.mt
 
-matrix_mt.__name = "matrix"
 
-matrix_mt.__index = function(t, k)
-  if type(k) == "table" then
-    return t.numberList[t.size[2]*(k[1] - 1) + k[2]]
-  elseif type(k) == "number" then
-    return matrix.getRow(t, k)
-  elseif props[k] then
-    return props[k](t)
-  elseif matrix[k] then
-    return matrix[k]
-  end
-end
+-- ------- Class Metatable ------
 
-matrix_mt.__newindex = function(t, k, v)
-  if type(k) == "table" then
-    if k[1] > t.size[1] or k[2] > t.size[2] then
-      --RESHAPE
-    end
-    t.numberList[t.size[2]*(k[1] - 1) + k[2]] = v
-  end
-end
+local matrix_class_mt = {}
+setmetatable(matrix, matrix_class_mt)
 
-matrix_mt.__len = function(t)
-  return matrix.length(t)
-end
-
-matrix_mt.__unm = function(t)
-  return matrix.scale(t, -1)
-end
-
-matrix_mt.__tostring = function(t)
-  return matrix.string(t)
-end
-
-matrix_mt.__eq = function(t1, t2)
-  return matrix.isEqual(t1, t2)
-end
-
-matrix_mt.__lt = function(t1, t2)
-  return matrix.isLessThan(t1, t2)
-end
-
-matrix_mt.__le = function(t1, t2)
-  return matrix.isLessEqualThan(t1, t2)
-end
-
+-- Allow for matrix(...) to be a shorcut for matrix.new(...)
 matrix_class_mt.__call = function(t, ...)
   return matrix.new(...)
 end
 
-setmetatable(matrix, matrix_class_mt)
+-- ==============================
+-- ========== The Math ==========
+-- ==============================
 
 
+-- ----- Conversion Formulas ----
+
+local function tableToMatrix(t)
+  local x = t
+  return matrix(x)
+end
+
+local function convRectToPolar(x, y)
+  return sqrt(x^2 + y^2), atan(y, x)
+end
+
+
+-- -------- Constructors --------
+
+-- Creates a matrix object from a real and imaginary component
+-- matrix = matrix.new(red, green, blue, alpha)
 function matrix.new(...)
-  local m = {}
+  local c = {}
 
-  local x = {...}
-  if type(x[1]) == "nil" then
-    x[1] = {}
-    x[1][1] = {}
-  elseif type(x[1][1]) == "table" then
-    x = x[1]
+  local v = {...}
+  if type(v[1]) == "table" then
+    v = v[1]
   end
 
-  local a, b = #x, #(x[1])
-  m.size = {a, b}
-  m.numberList = {}
+  v[1] = v[1] or 0
+  v[2] = v[2] or 0  -- Default components to 0 if left blank
 
-  for i = 1, a do
-    for j = 1, b do
-      table.insert(m.numberList, x[i][j])
-    end
-  end
+  c.values = v
+  c._props = {}
 
+  c._props.real = v[1]
+  c._props.imag = v[2]
 
-  setmetatable(m, matrix_mt)
-  return m
+  setmetatable(c, matrix_mt)
+  return c
 end
 
 
-function matrix.zeros(i, j)
-  local m = matrix()
+----------------------------
+---------- Methods ---------
+----------------------------
 
-  if type(i) == "table" then
-    i, j = i[1], i[2]
-  end
 
-  for k = 1, i*j do
-    m.numberList[k] = 0
-  end
+-- ------ Operations -------
 
-  m.size = {i, j}
 
-  return m
+function matrix.plus_matrix(c1, c2)
+  return matrix.new(c1.real + c2.real, c1.imag + c2.imag)
 end
 
-function matrix.diag(v)
-  if type(v) == "vector" then
-    local n = #v
-    local out = matrix.zeros(n, n)
-    for i = 1, n do
-      out.numberList[1 + (n + 1)*(i - 1)] = v.numberList[i]
+function matrix.plus_number(c, n)
+  return matrix.new(c.values[1] + n, c.values[2])
+end
+
+function matrix.plus(c, n)
+  if type(n) == 'number' then
+    return matrix.plus_number(c, n)
+  end
+  return matrix.plus_matrix(c, n)
+end
+
+
+function matrix.minus_matrix(c1, c2)
+  return matrix.new(c1.real - c2.real, c1.real - c2.real)
+end
+
+function matrix.minus_number(c, n)
+  return matrix.new(c.real - n, c.values[2])
+end
+
+function matrix.minus(c, n)
+  if type(n) == 'number' then
+    return matrix.minus_number(c, n)
+  end
+  return matrix.minus_matrix(c, n)
+end
+
+
+function matrix.scale(c, n)
+  if c.mag == 0 then
+    return matrix.polar(0, c.ang)
+  end
+  return matrix.new(c.values[1]*n, c.values[2]*n)
+end
+
+function matrix.rotate(c, n)
+  return matrix.polar(c.mag, c.ang + n)
+end
+
+function matrix.times(c1, c2)
+  local a, b = c1.real, c1.imag
+  local c, d = c2.real, c2.imag
+
+  return matrix.new(a*c - b*d, a*d + b*c)
+end
+
+function matrix.divide(c1, c2)
+  local a, b = c1.real, c1.imag
+  local c, d = c2.real, c2.imag
+
+  return matrix.new(a*c + b*d, b*c - a*d)/(a^2 + b^2)
+end
+
+function matrix.divide_scalar(c, n)
+  return matrix.new(c.real/n, c.imag/n)
+end
+
+function matrix.divideM_scalar(c, n)
+  return matrix.new(n/c.real, n/c.imag)
+end
+
+
+function matrix.power_scalar(c, n)
+  if n < 0 then
+    return matrix.power_scalar(matrix.reciprocal(c), -n)
+  else
+    local out = c
+
+    for i = 1, (n - 1) do
+      out = vector.times(out, c)
     end
+
     return out
   end
 end
 
-function matrix.get(m, ai, af, ei, ef)
-  if type(ai) == "table" then
-    ai, af, ei, ef = ai[1], ai[2], af[1], af[2]
-  end
-
-  local out = matrix.zeros(af - ai + 1, ef - ei + 1)
-
-  for i = ai, af do
-    for j = ei, ef do
-      out[{i - ai + 1, j - ei + 1}] = m[{i, j}]
-    end
-  end
-
-  return out
-end
-
-function matrix.getRow(m, i)
-  local n = m.size[2]
-  local out = vector.zeros(n)
-
-  for p = 1, n do
-    out[p] = m[{i, p}]
-  end
-
-  return out
-end
-
-function matrix.getCol(m, j)
-  local n = m.size[1]
-  local out = vector.zeros(n)
-
-  for q = 1, n do
-    out[q] = m[{q, j}]
-  end
-
-  return out
-end
-
-function matrix.setRow(m, i, v)
-  local n = m.size[2]
-  local out = matrix.clone(m)
-
-  for p = 1, n do
-    out[{i, p}] = v.numberList[p]
-  end
-
-  return out
-end
-
-function matrix.setCol(m, j, v)
-  local n = m.size[2]
-  local out = table.clone(m)
-
-  for q = 1, n do
-    out[{q, j}] = v.numberList[q]
-  end
-
-  return out
-end
-
-function matrix.clone(m)
-  local out = matrix.zeros(m.size)
-  out.numberList = m.numberList
-  return out
-end
-
---------------------------------------------------
-----------      OPERATIONS     -------------------
---------------------------------------------------
-function opers.plus(m1, m2)
-  local out = matrix.zeros(m1.size)
-
-  for i = 1, #m1 do
-    out.numberList[i] = m1.numberList[i] + m2.numberList[i]
-  end
-
-  return out
-end
-
-function opers.plus_scalar(m, n)
-  local out = matrix.zeros(m.size)
-
-  for i = 1, #m do
-    out.numberList[i] = m.numberList[i] + n
-  end
-
-  return out
-end
-
-function opers.minus(m1, m2)
-  local out = matrix.zeros(m1.size)
-
-  for i = 1, #m1 do
-    out.numberList[i] = m1.numberList[i] - m2.numberList[i]
-  end
-
-  return out
-end
-
-function opers.minus_scalar(m, n)
-  local out = matrix.zeros(m.size)
-
-  for i = 1, #m do
-    out.numberList[i] = m.numberList[i] - n
-  end
-
-  return out
-end
-
-function opers.scale(m, n)
-  local out = matrix.zeros(m.size)
-
-  for i = 1, #m do
-    out.numberList[i] = m.numberList[i]*n
-  end
-
-  return out
-end
-
-function opers.times(m1, m2)
-  local out = matrix.zeros(m1.size)
-
-  for i = 1, #m1 do
-    out.numberList[i] = m1.numberList[i]*m2.numberList[i]
-  end
-
-  return out
-end
-
-function opers.mult_vector(m, v)
-  local n = vector.length(v)
-  local out = vector.zeros(n)
-
-  for i = 1, n do
-    out.numberList[i] = vector.dot(v.numberList, matrix.getRow(m, i))
-  end
-
-  return out
-end
-
-function opers.mult(m1, m2)
-  local p, q = m1.size[1], m2.size[2]
-  local out = matrix.zeros(p, q)
-
-  for i = 1, p do
-    for j = 1, q do
-      out[{i, j}] = vector.dot(matrix.getRow(m1, i), matrix.getCol(m2, j))
-    end
-  end
-
-  return out
-end
-
-function opers.power(m1, m2)
-  local out = matrix.zeros(m1.size)
-
-  for i = 1, #m1 do
-    out.numberList[i] = m1.numberList[i]^m2.numberList[i]
-  end
-
-  return out
-end
-
-function opers.power_scalar(m, n)
-  local out = matrix.zeros(m.size)
-  for i = 1, #m do
-    out.numberList[i] = m.numberList[i]^n
-  end
-  return out
-end
-
-function opers.concat(m1, m2)
-
-end
-
-function opers.isEqual(m1, m2)
-  if matrix.length(m1) ~= matrix.length(m2) then
-    return false
-  end
-
-  for i = 1, matrix.length(m1) do
-    if m1.numberList[i] ~= m2.numberList[i] then
-      return false
-    end
-  end
-
-  return true
-end
-
-function opers.isLessThan(m1, m2)
-  if matrix.length(m1) ~= matrix.length(m2) then
-    return false
-  end
-
-  for i = 1, matrix.length(m1) do
-    if m1.numberList[i] >= m2.numberList[i] then
-      return false
-    end
-  end
-
-  return true
-end
-
-function opers.isLessEqualThan(m1, m2)
-  if matrix.length(m1) ~= matrix.length(m2) then
-    return false
-  end
-
-  for i = 1, matrix.length(m1) do
-    if m1.numberList[i] > m2.numberList[i] then
-      return false
-    end
-  end
-
-  return true
-end
-
-
---------------------------------------------------
-----------      PROPERTIES     -------------------
---------------------------------------------------
-function props.length(m)
-  return m.size[1]*m.size[2]
-end
-
-function props.string(m)
-  local s = "{"
-
-  if #m ~= 0 then
-    for i = 1, #m do
-      if i % m.size[2] == 1 then
-        s = s.."\n  ["
-      end
-
-      s = s..tostring(m.numberList[i])
-
-      if i % m.size[2] ~= 0 then
-        s = s..", "
-      else
-        s = s.."]"
-      end
-    end
-  end
-
-  s = s.."\n}"
-  return s
-end
-
-function props.T(m)
-  local p, q = m.size[1], m.size[2]
-  local out = matrix.zeros(q, p)
-
-  for i = 1, p do
-    for j = 1, q do
-      out[{j, i}] = m[{i, j}]
-    end
-  end
-
-  return out
-end
-
-function props.ef(m)
-
-end
-
-function props.rref(m)
-  local p, q = m.size[1], m.size[2]
-  local out = matrix.clone(m)
-
-  -- for i = 
-
-  return out
-end
-
-function matrix.determinant(m)
-  if m.size[1] == 1 then
-    return m.numberList[1]
-  elseif m.size[1] == 2 then
-    return m.numberList[1]*m.numberList[4] - m.numberList[2]*m.numberList[3]
-  elseif m.size[1] == 3 then
-    local a, b, c = m.numberList[1], m.numberList[2], m.numberList[3]
-    local d, e, f = m.numberList[4], m.numberList[5], m.numberList[6]
-    local g, h, i = m.numberList[7], m.numberList[8], m.numberList[9]
-    return a*e*i + b*f*g + c*d*h - c*e*g - b*d*i - a*f*h
-  else
-    --AAAAAAA
-  end
-end
-
-function matrix.adjugate(m)
-  if m.size[1] == 1 then
-    return matrix({{1}})
-  elseif m.size[1] == 2 then
-    return matrix({m.numberList[4], -m.numberList[2]}, {-m.numberList[3], m.numberList[1]})
-  elseif m.size[1] == 3 then
-    local a, b, c = m.numberList[1], m.numberList[2], m.numberList[3]
-    local d, e, f = m.numberList[4], m.numberList[5], m.numberList[6]
-    local g, h, i = m.numberList[7], m.numberList[8], m.numberList[9]
-
-    local r, s, t = matrix({e, f}, {h, i}), matrix({}, {}), matrix({}, {})
-    local u, v, w = matrix({}, {}), matrix({}, {}), matrix({}, {})
-    local x, y, z = matrix({}, {}), matrix({}, {}), matrix({}, {})
-
-    r, s, t = matrix.determinant(r), matrix.determinant(s), matrix.determinant(t)
-    u, v, w = matrix.determinant(u), matrix.determinant(v), matrix.determinant(w)
-    x, y, z = matrix.determinant(x), matrix.determinant(y), matrix.determinant(z)
-
-    return matrix({r, -s, t}, {-u, v, -w}, {x, -y, z})
-  else
-    --AAAAAAA
-  end
-end
-
-function matrix.reciprocal(m)
-  return 1/matrix.determinant(m)*matrix.adjugate(m)
+function matrix.power(c1, c2)
+  return matrix.exp(ln(c1.magnitude)*c2 + c1.angle*c2*matrix.i)
 end
 
 
 
-for k, v in pairs(opers) do
-  matrix[k] = v
+
+-- ------- Getter/Setters -------
+
+local function reset(t)
+  t._props = {}
 end
 
-for k, v in pairs(props) do
-  matrix[k] = v
+local function getter_real(c)
+  return c.values[1]
 end
 
--- Export Matrix class
-_G.matrix = matrix
+local function setter_real(c, v)
+  c.values[1] = v
+  reset(c)
+end
+
+
+
+-- ------------ Misc ------------
+
+
+function matrix.magnitude(c)
+  return c.magnitude
+end
+
+function matrix.angle(c)
+  return c.angle
+end
+
+
+
+
+-- ==============================
+-- ======== Props Setup =========
+-- ==============================
+
+-- ----------- _index -----------
+
+-- When accessing the index of a matrix, make it behave as if accessing the real and imaginary component
+function matrix_props._index.getter(t, k)
+  return t.values[k]
+end
+
+function matrix_props._index.setter(t, k, v)
+  t.values[k] = v
+  reset(t)
+end
+
+-- ---------- Register ----------
+
+matrix.registerprop{name = 'real',       type = 'read-write', getter = getter_real,      setter = setter_real}
+matrix.registerprop{name = 'string',     type = 'read-only'}
+
+matrix.registerprop{name = "clone",      type = 'method'}
+
+
+-- ---------- Aliases -----------
+
+matrix.registerpropAlias("real", "r")
+
+
+-- ==============================
+-- ======= Default Values =======
+-- ==============================
+
+-- ------ Common Directions ------
+
+-- matrix.right2d = matrix({0, 1})
+-- matrix.left2d  = matrix({-1, 0})
+-- matrix.up2d    = matrix({0, 1})
+-- matrix.down2d  = matrix({0, -1})
+
+-- matrix.right3d  = matrix({0, 1, 0})
+-- matrix.left3d   = matrix({-1, 0, 0})
+-- matrix.up3d     = matrix({0, 1, 0})
+-- matrix.down3d   = matrix({0, -1, 0})
+-- matrix.foward3d = matrix({0, 0, 1})
+-- matrix.back3d   = matrix({0, 0, -1})
+
+-- -- Aliases
+-- matrix.right  = matrix.right3d
+-- matrix.left   = matrix.left3d
+-- matrix.up     = matrix.up3d
+-- matrix.down   = matrix.down3d
+-- matrix.foward = matrix.foward3d
+-- matrix.back   = matrix.back3d
+
+-- -- ------ Identity Matrixes ------
+
+-- matrix.I2d = matrix.diag{1, 1}
+-- matrix.I3d = matrix.diag{1, 1, 1}
+-- matrix.I4d = matrix.diag{1, 1, 1, 1}
+
+-- -- Aliases
+-- matrix.I = matrixI3d

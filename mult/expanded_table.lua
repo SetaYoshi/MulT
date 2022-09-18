@@ -25,6 +25,13 @@ function table.string(t)
   return s
 end
 
+function table.map(t)
+  local out = {}
+  for k, v in pairs(t) do
+    out[v] = k
+  end
+  return out
+end
 
 local tostring_raw = tostring
 function tostring(t)

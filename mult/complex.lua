@@ -1,6 +1,6 @@
 local complex = {}
 
-local classConstruct = require("classConstruct")
+local classConstruct = require("mult/classConstruct")
 
 local min, max = math.min, math.max
 local sqrt, atan, ln, exp, abs = math.sqrt, math.atan, math.log, math.exp, math.abs
@@ -55,7 +55,7 @@ end
 -- -------- Constructors --------
 
 -- Creates a complex object from a real and imaginary component
--- complex = complex.rgba(red, green, blue, alpha)
+-- complex = complex.new(red, green, blue, alpha)
 function complex.new(...)
   local c = {}
 
